@@ -141,7 +141,12 @@ public:
     async_send_request(const urls::url_view& url, const http_request& req);
 
     // 读取完整响应 (处理下载文件/传输回调).
-    net::awaitable<http_result> async_read_response();
+    //
+    // redirects_remaining 为调用方剩余可跟随的重定向次数. 当响应为重定向
+    // (且带 Location) 且 redirects_remaining > 0 时, 仅读取响应头, 不将响应体
+    // 写入下载文件, 也不触发 transfer_handler, 以免跳转过程中的响应体混入
+    // 最终下载内容; 调用方随后可安全地跟随该重定向.
+    net::awaitable<http_result> async_read_response(int redirects_remaining = 0);
 
     // 仅发送 HTTP 请求头.
     net::awaitable<boost::system::error_code>

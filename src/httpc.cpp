@@ -164,7 +164,8 @@ namespace {
             if (ec)
                 co_return ec;
 
-            auto result = co_await client.async_read_response();
+            auto result =
+                co_await client.async_read_response(client.max_redirects() - redirect_count);
             if (!result)
                 co_return result.error();
 
@@ -385,7 +386,7 @@ http_client::async_send_request(const urls::url_view& url, const http_request& r
 // 读取响应 (支持下载文件 / 传输回调)
 // -----------------------------------------------------------------------
 
-net::awaitable<http_result> http_client::async_read_response()
+net::awaitable<http_result> http_client::async_read_response(int redirects_remaining)
 {
     http::response_parser<http::dynamic_body> parser;
     parser.eager(true);
@@ -406,6 +407,21 @@ net::awaitable<http_result> http_client::async_read_response()
     clear_stream_timeout();
     if (ec)
         co_return ec;
+
+    // 若该响应是即将被跟随的重定向, 只保留响应头: 不读取响应体, 不写下载
+    // 文件, 也不触发 transfer_handler. 调用方在跟随前会关闭当前连接, 因此
+    // 无需把 body 读完.
+    {
+        auto const status = parser.get().result_int();
+        bool const is_redirect = status == 301 || status == 302 || status == 303
+                                 || status == 307 || status == 308;
+        if (is_redirect && redirects_remaining > 0
+            && parser.get().find(http::field::location) != parser.get().end())
+        {
+            buffer_.clear();
+            co_return parser.release();
+        }
+    }
 
     // 如果有 body, 则分块读取
     if (!parser.is_done())
