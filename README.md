@@ -1,4 +1,4 @@
-# httpc
+﻿# httpc
 
 基于 [Boost.Asio](https://www.boost.org/doc/libs/release/doc/html/boost_asio.html)
 和 [Boost.Beast](https://www.boost.org/doc/libs/release/libs/beast/) 构建的现代 C++20 HTTP 客户端库。
@@ -47,6 +47,7 @@ cmake --build build -j
 | ---------------------------- | ------- | ----------------------------------------------- |
 | `HTTPC_BUILD_EXAMPLES`       | `OFF`   | 构建示例程序。                                  |
 | `HTTPC_SEPARATE_COMPILATION` | `ON`    | 单独编译 Boost.Asio/Beast（更快）。             |
+| `HTTPC_BUILD_TESTS`          | `OFF`   | 构建单元测试与集成测试。                        |
 | `HTTPC_BOOST_ROOT`           | (自动)  | Boost 源码树的路径。                            |
 
 构建示例：
@@ -63,6 +64,45 @@ cmake --build build -j
 Boost 的头文件，而不是 `find_package` 所选中的版本，可以通过
 `-DHTTPC_BOOST_ROOT=...` 指向匹配的 Boost 源码树。这是确保编译时使用的
 Boost 版本符合预期的最可靠方式。
+
+## 测试
+
+测试基于 [Boost.Test](https://www.boost.org/doc/libs/release/libs/test/)
+编写，并通过 CTest 注册。测试包含两部分：
+
+- 单元测试：URL 到请求目标 / Host 头的转换、请求头拷贝等纯逻辑。
+- 集成测试：在本地回环地址上启动一个极简 HTTP 服务器，覆盖请求发送、
+  重定向跟随、下载到文件与传输回调、文件上传、分块流式上传等场景。
+  测试只使用 `127.0.0.1`，不依赖外网。
+
+```sh
+cmake -S . -B build -DHTTPC_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+```
+
+也可以直接运行测试可执行文件，并按需选择用例：
+
+```sh
+./build/tests/httpc_tests
+./build/tests/httpc_tests --run_test=client_suite/upload_stream --log_level=test_suite
+```
+
+使用 Boost 源码树时，测试会直接把 `libs/test/src` 下的 Boost.Test 实现编译
+进测试目标，无需预先构建 Boost.Test 库；使用已安装的 Boost 时则通过
+`find_package(Boost COMPONENTS unit_test_framework)` 链接。
+
+## 持续集成
+
+`.github/workflows/ci.yml` 覆盖多平台与多编译器组合：
+
+| 平台    | 编译器                        |
+| ------- | ----------------------------- |
+| Linux   | GCC 13 / GCC 14 / Clang 18（含 libc++） |
+| macOS   | AppleClang / GCC 14           |
+| Windows | MSVC / clang-cl / MinGW（MSYS2 UCRT64） |
+
+每个组合都会以 `Release` 配置构建库、示例与测试，并执行 `ctest`。
 
 ## 用法
 

@@ -26,6 +26,7 @@ project(httpc
 # Options
 # ---------------------------------------------------------------------------
 option(HTTPC_BUILD_EXAMPLES      "Build httpc examples"                          OFF)
+option(HTTPC_BUILD_TESTS         "Build httpc tests"                             OFF)
 option(HTTPC_SEPARATE_COMPILATION "Compile Boost.Asio/Beast separately"          ON)
 set(HTTPC_BOOST_ROOT "" CACHE PATH
 	"Path to a Boost source tree (e.g. third_party/boost). When set, its per-library include dirs are used instead of find_package(Boost).")
@@ -140,6 +141,14 @@ add_library(httpc::httpc ALIAS httpc)
 # ---------------------------------------------------------------------------
 if(HTTPC_BUILD_EXAMPLES)
 	add_subdirectory(examples)
+endif()
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+if(HTTPC_BUILD_TESTS)
+	enable_testing()
+	add_subdirectory(tests)
 endif()
 
 # ---------------------------------------------------------------------------
