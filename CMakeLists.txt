@@ -39,6 +39,12 @@ endif()
 # Dependencies
 # ---------------------------------------------------------------------------
 
+# 允许通过环境变量提供 Boost 源码树 (用于 CI 或外部构建脚本).
+if(NOT HTTPC_BOOST_ROOT AND DEFINED ENV{HTTPC_BOOST_ROOT})
+	set(HTTPC_BOOST_ROOT "$ENV{HTTPC_BOOST_ROOT}"
+		CACHE PATH "Path to a Boost source tree (e.g. third_party/boost)" FORCE)
+endif()
+
 # 若项目自带 third_party/boost 源码树, 默认使用它.
 if(NOT HTTPC_BOOST_ROOT AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/boost/libs/asio/include")
 	set(HTTPC_BOOST_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/boost"

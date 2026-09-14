@@ -422,7 +422,7 @@ net::awaitable<http_result> http_client::async_read_response(int redirects_remai
 // -----------------------------------------------------------------------
 
 net::awaitable<http_result>
-http_client::async_perform(const std::string& url, const http_request& req) noexcept
+http_client::async_perform(std::string url, http_request req) noexcept
 {
     auto send_func =
         [&](const urls::url_view& url_view) -> net::awaitable<boost::system::error_code>
@@ -438,7 +438,7 @@ http_client::async_perform(const std::string& url, const http_request& req) noex
 // -----------------------------------------------------------------------
 
 net::awaitable<http_result> http_client::async_upload_file(
-    const std::string& url, const std::string& file_path, const http_request& req) noexcept
+    std::string url, std::string file_path, http_request req) noexcept
 {
     auto send_func =
         [&](const urls::url_view& url_view) -> net::awaitable<boost::system::error_code>
@@ -482,7 +482,7 @@ net::awaitable<http_result> http_client::async_upload_file(
 // -----------------------------------------------------------------------
 
 net::awaitable<http_result>
-http_client::async_upload_stream(const std::string& url, const http_request& req) noexcept
+http_client::async_upload_stream(std::string url, http_request req) noexcept
 {
     auto send_func =
         [&](const urls::url_view& url_view) -> net::awaitable<boost::system::error_code>

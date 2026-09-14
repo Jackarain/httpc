@@ -38,6 +38,7 @@ jobs:
             cxx: clang++-18
             packages: clang-18 libc++-18-dev libc++abi-18-dev
             stdlib: libc++
+            flags: -DCMAKE_CXX_FLAGS=-stdlib=libc++ -DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++
     steps:
       - uses: actions/checkout@v4
 
@@ -47,25 +48,22 @@ jobs:
           sudo apt-get install -y cmake ninja-build libssl-dev ${{ matrix.packages }}
 
       - name: Install Boost
-        uses: MarkusJx/install-boost@v2
-        id: install-boost
-        with:
-          boost_version: ${{ env.BOOST_VERSION }}
-          platform_version: 24.04
-          toolset: gcc
-          arch: x86
-          boost_install_dir: ${{ runner.temp }}/boost
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/boost.tar.gz" \
+            "https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}-b2-nodocs.tar.gz"
+          tar -xzf "$RUNNER_TEMP/boost.tar.gz" -C "$RUNNER_TEMP"
 
       - name: Configure
         env:
           CC: ${{ matrix.cc }}
           CXX: ${{ matrix.cxx }}
-          BOOST_ROOT: ${{ steps.install-boost.outputs.BOOST_ROOT }}
+          HTTPC_BOOST_ROOT: ${{ runner.temp }}/boost-${{ env.BOOST_VERSION }}
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DHTTPC_BUILD_EXAMPLES=ON \
-            -DHTTPC_BUILD_TESTS=ON
+            -DHTTPC_BUILD_TESTS=ON \
+            ${{ matrix.flags }}
 
       - name: Build
         run: cmake --build build --parallel
@@ -96,19 +94,15 @@ jobs:
           brew install cmake ninja openssl ${{ matrix.packages }}
 
       - name: Install Boost
-        uses: MarkusJx/install-boost@v2
-        id: install-boost
-        with:
-          boost_version: ${{ env.BOOST_VERSION }}
-          platform_version: 14
-          toolset: clang
-          arch: aarch64
-          boost_install_dir: ${{ runner.temp }}/boost
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/boost.tar.gz" \
+            "https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}-b2-nodocs.tar.gz"
+          tar -xzf "$RUNNER_TEMP/boost.tar.gz" -C "$RUNNER_TEMP"
 
       - name: Configure
         env:
           CXX: ${{ matrix.cxx }}
-          BOOST_ROOT: ${{ steps.install-boost.outputs.BOOST_ROOT }}
+          HTTPC_BOOST_ROOT: ${{ runner.temp }}/boost-${{ env.BOOST_VERSION }}
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -148,21 +142,13 @@ jobs:
             mingw-w64-ucrt-x86_64-openssl
             mingw-w64-ucrt-x86_64-boost
 
-      - name: Restore vcpkg cache
-        if: matrix.compiler != 'mingw'
-        uses: actions/cache@v4
-        with:
-          path: C:/vcpkg/installed
-          key: vcpkg-${{ runner.os }}-${{ matrix.compiler }}-${{ hashFiles('.github/workflows/ci.yml') }}
-
-      - name: Install Boost and OpenSSL (vcpkg)
+      - name: Install Boost
         if: matrix.compiler != 'mingw'
         shell: pwsh
         run: |
-          $vcpkg = Join-Path $env:VCPKG_INSTALLATION_ROOT "vcpkg.exe"
-          & $vcpkg install boost-url boost-system boost-test openssl --triplet x64-windows
-          "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
-          "BOOST_ROOT=$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows" >> $env:GITHUB_ENV
+          curl.exe -fsSL -o "$env:RUNNER_TEMP\boost.tar.gz" `
+            "https://github.com/boostorg/boost/releases/download/boost-$env:BOOST_VERSION/boost-$env:BOOST_VERSION-b2-nodocs.tar.gz"
+          tar -xzf "$env:RUNNER_TEMP\boost.tar.gz" -C "$env:RUNNER_TEMP"
 
       - name: Configure (MSYS2 / MinGW)
         if: matrix.compiler == 'mingw'
@@ -177,23 +163,31 @@ jobs:
 
       - name: Configure (MSVC)
         if: matrix.compiler == 'msvc'
+        env:
+          HTTPC_BOOST_ROOT: ${{ runner.temp }}\boost-${{ env.BOOST_VERSION }}
         run: |
           cmake -S . -B build -A x64 `
             -DHTTPC_BUILD_EXAMPLES=ON `
-            -DHTTPC_BUILD_TESTS=ON
+            -DHTTPC_BUILD_TESTS=ON `
+            -DOPENSSL_ROOT_DIR="C:/Program Files/OpenSSL"
 
       - name: Configure (clang-cl)
         if: matrix.compiler == 'clang-cl'
+        env:
+          HTTPC_BOOST_ROOT: ${{ runner.temp }}\boost-${{ env.BOOST_VERSION }}
         run: |
           cmake -S . -B build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_C_COMPILER=clang-cl `
             -DCMAKE_CXX_COMPILER=clang-cl `
             -DHTTPC_BUILD_EXAMPLES=ON `
-            -DHTTPC_BUILD_TESTS=ON
+            -DHTTPC_BUILD_TESTS=ON `
+            -DOPENSSL_ROOT_DIR="C:/Program Files/OpenSSL"
 
       - name: Build
+        shell: ${{ matrix.compiler == 'mingw' && 'msys2 {0}' || 'pwsh' }}
         run: cmake --build build --config Release --parallel
 
       - name: Test
+        shell: ${{ matrix.compiler == 'mingw' && 'msys2 {0}' || 'pwsh' }}
         run: ctest --test-dir build -C Release --output-on-failure

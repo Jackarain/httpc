@@ -29,6 +29,7 @@
 #include <future>
 #include <stdexcept>
 #include <thread>
+#include <type_traits>
 #include <utility>
 
 namespace httpc_test {
@@ -156,27 +157,90 @@ private:
     std::uint16_t port_ {0};
 };
 
-// 在独立 io_context 上同步执行协程; 超时则停止 io_context 并抛出异常.
+// 取出 awaitable 的值类型.
 template<typename T>
-T run_sync(net::awaitable<T> aw, std::chrono::milliseconds timeout = std::chrono::seconds(30))
+struct awaitable_value
+{
+    using type = T;
+};
+
+template<typename T, typename Executor>
+struct awaitable_value<net::awaitable<T, Executor>>
+{
+    using type = T;
+};
+
+template<typename T>
+using awaitable_value_t = typename awaitable_value<std::remove_cvref_t<T>>::type;
+
+// 在独立 io_context 上同步执行协程; 超时则停止 io_context 并抛出异常.
+// 客户端在协程内部创建, 因此其执行器与驱动协程的 io_context 必然一致.
+namespace detail {
+
+// 在独立 io_context 上驱动协程并等待其结果, 带整体超时保护.
+template<typename T>
+T drive(net::awaitable<T> work, std::chrono::milliseconds timeout)
 {
     net::io_context ioc;
-    auto future = net::co_spawn(ioc, std::move(aw), net::use_future);
+    auto guard = net::make_work_guard(ioc);
 
+    auto started = net::co_spawn(ioc, std::move(work), net::use_future);
     std::thread runner([&ioc] { ioc.run(); });
 
-    auto status = future.wait_for(timeout);
-    if (status != std::future_status::ready)
+    if (started.wait_for(timeout) != std::future_status::ready)
     {
         ioc.stop();
         runner.join();
         throw std::runtime_error("test coroutine timed out");
     }
 
+    T value = started.get();
+
+    guard.reset();
     ioc.stop();
     runner.join();
 
-    return future.get();
+    return value;
+}
+
+} // namespace detail
+
+// 在独立 io_context 上执行协程; 客户端在协程内部创建, 因此其执行器与驱动
+// 协程的 io_context 必然一致.
+template<typename Coroutine>
+auto run_sync(Coroutine coroutine, std::chrono::milliseconds timeout = std::chrono::seconds(30))
+{
+    using value_t = awaitable_value_t<std::invoke_result_t<Coroutine&, httpc::http_client&>>;
+
+    return detail::drive(
+        [](Coroutine body) -> net::awaitable<value_t>
+        {
+            httpc::http_client client(co_await net::this_coro::executor);
+            co_return co_await body(client);
+        }(std::move(coroutine)),
+        timeout);
+}
+
+// 先对客户端做配置 (同步 lambda 或协程), 再执行协程并返回其结果.
+template<typename Configure, typename Coroutine>
+auto run_sync_with_client(Configure configure, Coroutine coroutine,
+    std::chrono::milliseconds timeout = std::chrono::seconds(30))
+{
+    using value_t = awaitable_value_t<std::invoke_result_t<Coroutine&, httpc::http_client&>>;
+
+    return detail::drive(
+        [](Configure setup, Coroutine body) -> net::awaitable<value_t>
+        {
+            httpc::http_client client(co_await net::this_coro::executor);
+
+            if constexpr (std::is_void_v<std::invoke_result_t<Configure&, httpc::http_client&>>)
+                setup(client);
+            else
+                co_await setup(client);
+
+            co_return co_await body(client);
+        }(std::move(configure), std::move(coroutine)),
+        timeout);
 }
 
 } // namespace httpc_test

@@ -91,8 +91,10 @@ public:
     //  if (result)
     //      auto& resp = *result;    // http_response
     //
+    // 参数按值传入: 该接口是惰性协程, 调用后可能延迟到实参离开作用域才恢复,
+    // 因此协程帧必须持有 url/req 的独立副本.
     net::awaitable<http_result>
-    async_perform(const std::string& url, const http_request& req) noexcept;
+    async_perform(std::string url, http_request req) noexcept;
 
     // 异步上传文件到服务器.
     // 使用 http::file_body 流式上传, 支持重定向.
@@ -111,9 +113,9 @@ public:
     //      auto& resp = *result;    // http_response
     //
     net::awaitable<http_result> async_upload_file(
-        const std::string& url,
-        const std::string& file_path,
-        const http_request& req = http_request {}) noexcept;
+        std::string url,
+        std::string file_path,
+        http_request req = http_request {}) noexcept;
 
     // 异步上传流数据.
     // 使用 upload_handler 作为数据源流式上传, 支持重定向.
@@ -128,7 +130,7 @@ public:
     //      "https://example.com/upload", req);
     //
     net::awaitable<http_result>
-    async_upload_stream(const std::string& url, const http_request& req) noexcept;
+    async_upload_stream(std::string url, http_request req) noexcept;
 
     // ------------------------------------------------------------
     // 以下接口为手工精细控制.

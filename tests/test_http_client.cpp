@@ -33,8 +33,9 @@ using httpc::http_result;
 using httpc::verb;
 
 // 发起一次完整请求.
-net::awaitable<http_result> perform(http_client& client, const std::string& url,
-    const http_request& req)
+// 参数按值传入, 保证惰性协程创建后其帧内持有完整副本, 不依赖调用者栈帧.
+net::awaitable<http_result> perform(http_client& client, std::string url,
+    http_request req)
 {
     co_return co_await client.async_perform(url, req);
 }
@@ -51,15 +52,12 @@ std::string temp_file_path(const std::string& name)
 }
 
 // 集成测试夹具: 每个用例拥有一个独立的本地服务器与执行器.
+// 需要发起真实请求的用例请使用 run_sync* 提供的客户端, 以保证客户端执行器
+// 与驱动协程的 io_context 一致.
 struct server_fixture
 {
     test_server server;
     net::io_context ioc;
-
-    http_client make_client()
-    {
-        return http_client(ioc.get_executor());
-    }
 
     static http_request make_get_request()
     {
@@ -74,7 +72,7 @@ BOOST_FIXTURE_TEST_SUITE(client_suite, server_fixture)
 
 BOOST_AUTO_TEST_CASE(default_configuration)
 {
-    http_client client = make_client();
+    http_client client(ioc.get_executor());
 
     BOOST_TEST(client.check_certificate() == false);
     BOOST_TEST(client.max_redirects() == 5);
@@ -86,7 +84,7 @@ BOOST_AUTO_TEST_CASE(default_configuration)
 
 BOOST_AUTO_TEST_CASE(configuration_setters)
 {
-    http_client client = make_client();
+    http_client client(ioc.get_executor());
 
     client.user_agent("httpc-test/1.0");
     client.set_sni("sni.example.com");
@@ -115,16 +113,25 @@ BOOST_AUTO_TEST_CASE(configuration_setters)
 
 BOOST_AUTO_TEST_CASE(reject_invalid_url)
 {
-    http_client client = make_client();
-    auto result = run_sync(perform(client, "http://exa mple.com/", make_get_request()));
+    auto result =
+        run_sync(
+            [](http_client& client)
+            {
+                const http_request req = make_get_request();
+                return perform(client, "http://exa mple.com/", req);
+            });
     BOOST_TEST(!result.has_value());
 }
 
 BOOST_AUTO_TEST_CASE(connect_failure_is_reported)
 {
-    http_client client = make_client();
-    client.connect_timeout(std::chrono::milliseconds(5000));
-    auto result = run_sync(perform(client, "http://127.0.0.1:1/", make_get_request()));
+    auto result = run_sync(
+        [](http_client& client)
+        {
+            client.connect_timeout(std::chrono::milliseconds(5000));
+            const http_request req = make_get_request();
+            return perform(client, "http://127.0.0.1:1/", req);
+        });
     BOOST_TEST(!result.has_value());
 }
 
@@ -143,8 +150,12 @@ BOOST_AUTO_TEST_CASE(get_request)
             return res;
         });
 
-    http_client client = make_client();
-    auto result = run_sync(perform(client, server.url("/hello"), make_get_request()));
+    auto result = run_sync(
+        [url = server.url("/hello")](http_client& client)
+        {
+            const http_request req = make_get_request();
+            return perform(client, url, req);
+        });
 
     BOOST_REQUIRE(result.has_value());
     BOOST_TEST(result->result_int() == 200u);
@@ -165,15 +176,17 @@ BOOST_AUTO_TEST_CASE(get_with_custom_headers_and_query)
             return res;
         });
 
-    http_client client = make_client();
-    client.user_agent("my-agent");
+    auto result = run_sync(
+        [url = server.url("/search?q=boost+beast&page=2")](http_client& client)
+        {
+            client.user_agent("my-agent");
 
-    http_request req = make_get_request();
-    req.set(http::field::accept, "application/json");
-    req.set("x-request-id", "42");
+            http_request req = make_get_request();
+            req.set(http::field::accept, "application/json");
+            req.set("x-request-id", "42");
 
-    auto result =
-        run_sync(perform(client, server.url("/search?q=boost+beast&page=2"), req));
+            return perform(client, url, req);
+        });
 
     BOOST_REQUIRE(result.has_value());
     BOOST_TEST(result->result_int() == 200u);
@@ -189,8 +202,12 @@ BOOST_AUTO_TEST_CASE(not_found_response)
             return res;
         });
 
-    http_client client = make_client();
-    auto result = run_sync(perform(client, server.url("/nothere"), make_get_request()));
+    auto result = run_sync(
+        [url = server.url("/nothere")](http_client& client)
+        {
+            const http_request req = make_get_request();
+            return perform(client, url, req);
+        });
 
     BOOST_REQUIRE(result.has_value());
     BOOST_TEST(result->result_int() == 404u);
@@ -214,8 +231,12 @@ BOOST_AUTO_TEST_CASE(follows_redirect)
             return res;
         });
 
-    http_client client = make_client();
-    auto result = run_sync(perform(client, server.url("/redirect"), make_get_request()));
+    auto result = run_sync(
+        [url = server.url("/redirect")](http_client& client)
+        {
+            const http_request req = make_get_request();
+            return perform(client, url, req);
+        });
 
     BOOST_REQUIRE(result.has_value());
     BOOST_TEST(result->result_int() == 200u);
@@ -232,10 +253,14 @@ BOOST_AUTO_TEST_CASE(redirect_disabled_returns_original_response)
             return res;
         });
 
-    http_client client = make_client();
-    client.max_redirects(0);
+    auto result = run_sync(
+        [url = server.url("/redirect")](http_client& client)
+        {
+            client.max_redirects(0);
 
-    auto result = run_sync(perform(client, server.url("/redirect"), make_get_request()));
+            const http_request req = make_get_request();
+            return perform(client, url, req);
+        });
 
     BOOST_REQUIRE(result.has_value());
     BOOST_TEST(result->result_int() == 302u);
@@ -261,15 +286,22 @@ BOOST_AUTO_TEST_CASE(result_handler_reports_every_response)
             return res;
         });
 
-    http_client client = make_client();
     auto statuses = std::make_shared<std::vector<int>>();
-    client.set_http_result_handler(
-        [statuses](const http_response& resp)
-        {
-            statuses->push_back(resp.result_int());
-        });
 
-    auto result = run_sync(perform(client, server.url("/redirect"), make_get_request()));
+    auto result = run_sync_with_client(
+        [statuses](http_client& client)
+        {
+            client.set_http_result_handler(
+                [statuses](const http_response& resp)
+                {
+                    statuses->push_back(resp.result_int());
+                });
+        },
+        [url = server.url("/redirect")](http_client& client)
+        {
+            const http_request req = make_get_request();
+            return perform(client, url, req);
+        });
 
     BOOST_REQUIRE(result.has_value());
     BOOST_REQUIRE(statuses->size() == 2);
@@ -298,20 +330,26 @@ BOOST_AUTO_TEST_CASE(download_to_file_and_transfer_handler)
             return res;
         });
 
-    http_client client = make_client();
     const std::string path = temp_file_path("test-download");
     std::remove(path.c_str());
-    client.set_download_file(path);
-
     auto transferred = std::make_shared<std::string>();
-    client.set_transfer_handler(
-        [transferred](void* data, std::size_t size) -> int
-        {
-            transferred->append(static_cast<const char*>(data), size);
-            return 0;
-        });
 
-    auto result = run_sync(perform(client, server.url("/redirect"), make_get_request()));
+    auto result = run_sync_with_client(
+        [path, transferred](http_client& client)
+        {
+            client.set_download_file(path);
+            client.set_transfer_handler(
+                [transferred](void* data, std::size_t size) -> int
+                {
+                    transferred->append(static_cast<const char*>(data), size);
+                    return 0;
+                });
+        },
+        [url = server.url("/redirect")](http_client& client)
+        {
+            const http_request req = make_get_request();
+            return perform(client, url, req);
+        });
 
     BOOST_REQUIRE(result.has_value());
     BOOST_TEST(result->result_int() == 200u);
@@ -357,12 +395,15 @@ BOOST_AUTO_TEST_CASE(upload_file)
         std::fclose(file);
     }
 
-    http_client client = make_client();
-    http_request req;
-    req.method(verb::put);
-    req.set(http::field::authorization, "Bearer token");
-
-    auto result = run_sync(client.async_upload_file(server.url("/upload"), path, req));
+    auto result = run_sync_with_client(
+        [](http_client&) {},
+        [url = server.url("/upload"), path](http_client& client)
+        {
+            http_request req;
+            req.method(verb::put);
+            req.set(http::field::authorization, "Bearer token");
+            return client.async_upload_file(url, path, req);
+        });
     std::remove(path.c_str());
 
     BOOST_REQUIRE(result.has_value());
@@ -380,9 +421,12 @@ BOOST_AUTO_TEST_CASE(upload_missing_file)
             return res;
         });
 
-    http_client client = make_client();
+    const std::string path = temp_file_path("missing-file");
     auto result = run_sync(
-        client.async_upload_file(server.url("/upload"), temp_file_path("missing-file"), {}));
+        [url = server.url("/upload"), path](http_client& client)
+        {
+            return client.async_upload_file(url, path, {});
+        });
 
     BOOST_TEST(!result.has_value());
 }
@@ -404,24 +448,28 @@ BOOST_AUTO_TEST_CASE(upload_stream)
             return res;
         });
 
-    http_client client = make_client();
-    client.set_transfer_handler(
-        [payload, offset](void* data, std::size_t size) -> int
+    auto result = run_sync_with_client(
+        [payload, offset](http_client& client)
         {
-            // 作为上传数据源: 数据发送完毕后返回 0 表示结束.
-            if (*offset >= payload.size())
-                return 0;
+            client.set_transfer_handler(
+                [payload, offset](void* data, std::size_t size) -> int
+                {
+                    // 作为上传数据源: 数据发送完毕后返回 0 表示结束.
+                    if (*offset >= payload.size())
+                        return 0;
 
-            const std::size_t n = (std::min)(size, payload.size() - *offset);
-            std::memcpy(data, payload.data() + *offset, n);
-            *offset += n;
-            return static_cast<int>(n);
+                    const std::size_t n = (std::min)(size, payload.size() - *offset);
+                    std::memcpy(data, payload.data() + *offset, n);
+                    *offset += n;
+                    return static_cast<int>(n);
+                });
+        },
+        [url = server.url("/stream")](http_client& client)
+        {
+            http_request req;
+            req.method(verb::post);
+            return client.async_upload_stream(url, req);
         });
-
-    http_request req;
-    req.method(verb::post);
-
-    auto result = run_sync(client.async_upload_stream(server.url("/stream"), req));
 
     BOOST_REQUIRE(result.has_value());
     BOOST_TEST(result->result_int() == 200u);
@@ -441,27 +489,31 @@ BOOST_AUTO_TEST_CASE(upload_stream_receives_response_body)
             return res;
         });
 
-    http_client client = make_client();
-    client.set_transfer_handler(
-        [payload, offset, received](void* data, std::size_t size) -> int
+    auto result = run_sync_with_client(
+        [payload, offset, received](http_client& client)
         {
-            if (*offset < payload.size())
-            {
-                const std::size_t n = (std::min)(size, payload.size() - *offset);
-                std::memcpy(data, payload.data() + *offset, n);
-                *offset += n;
-                return static_cast<int>(n);
-            }
+            client.set_transfer_handler(
+                [payload, offset, received](void* data, std::size_t size) -> int
+                {
+                    if (*offset < payload.size())
+                    {
+                        const std::size_t n = (std::min)(size, payload.size() - *offset);
+                        std::memcpy(data, payload.data() + *offset, n);
+                        *offset += n;
+                        return static_cast<int>(n);
+                    }
 
-            // 上传结束后, 回调用于消费响应体; 此时不应再写入缓冲区.
-            received->assign(static_cast<const char*>(data), size);
-            return 0;
+                    // 上传结束后, 回调用于消费响应体; 此时不应再写入缓冲区.
+                    received->assign(static_cast<const char*>(data), size);
+                    return 0;
+                });
+        },
+        [url = server.url("/stream")](http_client& client)
+        {
+            http_request req;
+            req.method(verb::post);
+            return client.async_upload_stream(url, req);
         });
-
-    http_request req;
-    req.method(verb::post);
-
-    auto result = run_sync(client.async_upload_stream(server.url("/stream"), req));
 
     BOOST_REQUIRE(result.has_value());
     BOOST_TEST(result->result_int() == 200u);
