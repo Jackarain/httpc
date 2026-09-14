@@ -70,17 +70,19 @@ if(HTTPC_BOOST_ROOT)
 	endif()
 
 	# Boost.URL 的 url_view / pct_string_view 等接口需要其编译库, 这里从源码构建.
+	# Boost.URL 由本工程自行编译, 关闭 Boost 的自动链接.
+	set(HTTPC_BOOST_DEFINITIONS BOOST_URL_NO_LIB=1 BOOST_URL_STATIC_LINK=1)
+
 	file(GLOB_RECURSE _httpc_boost_url_sources
 		"${HTTPC_BOOST_ROOT}/libs/url/src/*.cpp")
 	add_library(httpc_boost_url STATIC ${_httpc_boost_url_sources})
 	target_include_directories(httpc_boost_url PUBLIC ${HTTPC_BOOST_INCLUDE_DIRS})
+	target_compile_definitions(httpc_boost_url PUBLIC ${HTTPC_BOOST_DEFINITIONS})
 	set_target_properties(httpc_boost_url PROPERTIES
 		POSITION_INDEPENDENT_CODE ON
 	)
 	target_compile_features(httpc_boost_url PUBLIC cxx_std_20)
 	set(HTTPC_BOOST_TARGETS httpc_boost_url)
-	# Boost.URL 由本工程自行编译, 关闭 Boost 的自动链接.
-	set(HTTPC_BOOST_DEFINITIONS BOOST_URL_NO_LIB=1 BOOST_URL_STATIC_LINK=1)
 else()
 	set(HTTPC_BOOST_DEFINITIONS "")
 	# Installed Boost (Boost.Asio / Beast / Variant2 are header-only and
