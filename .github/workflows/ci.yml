@@ -184,10 +184,20 @@ jobs:
             -DHTTPC_BUILD_TESTS=ON `
             -DOPENSSL_ROOT_DIR="C:/Program Files/OpenSSL"
 
-      - name: Build
-        shell: ${{ matrix.compiler == 'mingw' && 'msys2 {0}' || 'pwsh' }}
+      - name: Build (MSYS2 / MinGW)
+        if: matrix.compiler == 'mingw'
+        shell: msys2 {0}
         run: cmake --build build --config Release --parallel
 
+      - name: Build
+        if: matrix.compiler != 'mingw'
+        run: cmake --build build --config Release --parallel
+
+      - name: Test (MSYS2 / MinGW)
+        if: matrix.compiler == 'mingw'
+        shell: msys2 {0}
+        run: ctest --test-dir build -C Release --output-on-failure
+
       - name: Test
-        shell: ${{ matrix.compiler == 'mingw' && 'msys2 {0}' || 'pwsh' }}
+        if: matrix.compiler != 'mingw'
         run: ctest --test-dir build -C Release --output-on-failure
