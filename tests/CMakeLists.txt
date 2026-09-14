@@ -46,6 +46,11 @@ target_include_directories(httpc_tests PRIVATE
 	${CMAKE_CURRENT_SOURCE_DIR}/../include
 )
 
+if(HTTPC_BOOST_ROOT)
+	# Boost.Test 源码直接编入测试目标, 关闭 Boost 的自动链接.
+	target_compile_definitions(httpc_tests PRIVATE BOOST_TEST_NO_LIB)
+endif()
+
 if(MSVC)
 	# 避免 MSVC 下 Boost.Test 自动链接到动态库.
 	target_compile_definitions(httpc_tests PRIVATE BOOST_TEST_STATIC_LINK)

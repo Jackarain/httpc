@@ -60,9 +60,11 @@ if(HTTPC_BOOST_ROOT)
 	# 头文件位于 libs/<lib>/include, 少量模块为 libs/<group>/<lib>/include
 	# (例如 numeric/conversion), 这里一并收集, 并排除各库的测试头文件目录.
 	file(GLOB HTTPC_BOOST_INCLUDE_DIRS
-		"${HTTPC_BOOST_ROOT}/libs/*/include"
+		"${HTTPC_BOOST_ROOT}/libs/*/include")
+	file(GLOB _httpc_boost_nested_include_dirs
 		"${HTTPC_BOOST_ROOT}/libs/*/*/include")
-	list(FILTER HTTPC_BOOST_INCLUDE_DIRS EXCLUDE REGEX "/test/include$")
+	list(FILTER _httpc_boost_nested_include_dirs EXCLUDE REGEX "/test/include$")
+	list(APPEND HTTPC_BOOST_INCLUDE_DIRS ${_httpc_boost_nested_include_dirs})
 	if(NOT HTTPC_BOOST_INCLUDE_DIRS)
 		message(FATAL_ERROR "No Boost include dirs found under ${HTTPC_BOOST_ROOT}/libs/*/include")
 	endif()
@@ -77,7 +79,10 @@ if(HTTPC_BOOST_ROOT)
 	)
 	target_compile_features(httpc_boost_url PUBLIC cxx_std_20)
 	set(HTTPC_BOOST_TARGETS httpc_boost_url)
+	# Boost.URL 由本工程自行编译, 关闭 Boost 的自动链接.
+	set(HTTPC_BOOST_DEFINITIONS BOOST_URL_NO_LIB=1 BOOST_URL_STATIC_LINK=1)
 else()
+	set(HTTPC_BOOST_DEFINITIONS "")
 	# Installed Boost (Boost.Asio / Beast / Variant2 are header-only and
 	# exposed through Boost::headers; a Boost source superproject provides
 	# dedicated Boost::asio / Boost::beast / Boost::variant2 targets).
@@ -128,6 +133,10 @@ if(HTTPC_BOOST_INCLUDE_DIRS)
 	target_include_directories(httpc PUBLIC ${HTTPC_BOOST_INCLUDE_DIRS})
 endif()
 
+if(HTTPC_BOOST_DEFINITIONS)
+	target_compile_definitions(httpc PUBLIC ${HTTPC_BOOST_DEFINITIONS})
+endif()
+
 target_link_libraries(httpc
 	PUBLIC
 		${HTTPC_BOOST_TARGETS}
@@ -137,8 +146,9 @@ target_link_libraries(httpc
 )
 
 if(WIN32)
-	# Boost.Asio 在 Windows 上依赖 Winsock; MinGW 不通过 #pragma comment 自动链接.
-	target_link_libraries(httpc PUBLIC ws2_32)
+	# Boost.Asio 在 Windows 上依赖 Winsock/BCrypt; MinGW 不会通过
+	# #pragma comment 自动链接这些系统库.
+	target_link_libraries(httpc PUBLIC ws2_32 mswsock bcrypt)
 endif()
 
 target_compile_features(httpc PUBLIC cxx_std_20)
