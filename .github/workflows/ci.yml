@@ -50,13 +50,8 @@ jobs:
       - name: Install Boost
         run: |
           curl -fsSL -o "$RUNNER_TEMP/boost.tar.gz" \
-            "https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}-b2-nodocs.tar.gz"
-          ls -l "$RUNNER_TEMP/boost.tar.gz"
-          tar -tzf "$RUNNER_TEMP/boost.tar.gz" | head -3
-          tar -tzf "$RUNNER_TEMP/boost.tar.gz" | grep -c "^boost-.*/libs/" || true
+            "https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}-cmake.tar.gz"
           tar -xzf "$RUNNER_TEMP/boost.tar.gz" -C "$RUNNER_TEMP"
-          ls "$RUNNER_TEMP"
-          ls -d "$RUNNER_TEMP"/boost-*/libs || true
 
       - name: Configure
         env:
@@ -101,7 +96,7 @@ jobs:
       - name: Install Boost
         run: |
           curl -fsSL -o "$RUNNER_TEMP/boost.tar.gz" \
-            "https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}-b2-nodocs.tar.gz"
+            "https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}-cmake.tar.gz"
           tar -xzf "$RUNNER_TEMP/boost.tar.gz" -C "$RUNNER_TEMP"
 
       - name: Configure
@@ -152,7 +147,7 @@ jobs:
         shell: pwsh
         run: |
           curl.exe -fsSL -o "$env:RUNNER_TEMP\boost.tar.gz" `
-            "https://github.com/boostorg/boost/releases/download/boost-$env:BOOST_VERSION/boost-$env:BOOST_VERSION-b2-nodocs.tar.gz"
+            "https://github.com/boostorg/boost/releases/download/boost-$env:BOOST_VERSION/boost-$env:BOOST_VERSION-cmake.tar.gz"
           tar -xzf "$env:RUNNER_TEMP\boost.tar.gz" -C "$env:RUNNER_TEMP"
 
       - name: Configure (MSYS2 / MinGW)
