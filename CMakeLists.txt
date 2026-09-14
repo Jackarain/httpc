@@ -57,8 +57,12 @@ set(HTTPC_BOOST_INCLUDE_DIRS "")
 
 if(HTTPC_BOOST_ROOT)
 	# Boost source tree: collect the per-library include dirs.
+	# 头文件位于 libs/<lib>/include, 少量模块为 libs/<group>/<lib>/include
+	# (例如 numeric/conversion), 这里一并收集, 并排除各库的测试头文件目录.
 	file(GLOB HTTPC_BOOST_INCLUDE_DIRS
-		"${HTTPC_BOOST_ROOT}/libs/*/include")
+		"${HTTPC_BOOST_ROOT}/libs/*/include"
+		"${HTTPC_BOOST_ROOT}/libs/*/*/include")
+	list(FILTER HTTPC_BOOST_INCLUDE_DIRS EXCLUDE REGEX "/test/include$")
 	if(NOT HTTPC_BOOST_INCLUDE_DIRS)
 		message(FATAL_ERROR "No Boost include dirs found under ${HTTPC_BOOST_ROOT}/libs/*/include")
 	endif()
@@ -131,6 +135,11 @@ target_link_libraries(httpc
 		OpenSSL::Crypto
 		Threads::Threads
 )
+
+if(WIN32)
+	# Boost.Asio 在 Windows 上依赖 Winsock; MinGW 不通过 #pragma comment 自动链接.
+	target_link_libraries(httpc PUBLIC ws2_32)
+endif()
 
 target_compile_features(httpc PUBLIC cxx_std_20)
 
